@@ -260,6 +260,7 @@ def fallback_interpret_notes(
 
 def extract_hours_from_text(text: str) -> list[int]:
     """Helper to extract start-inclusive, end-exclusive whole-hour intervals."""
+    text = text.lower()
     # Pattern: 13:00 to 15:00, 13:00 - 15:00, between 13:00 and 15:00
     m24 = re.search(r"(\d{1,2}):00\s*(?:to|until|-|and)\s*(\d{1,2}):00", text)
     if m24:
