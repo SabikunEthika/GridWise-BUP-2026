@@ -1,286 +1,322 @@
 # GridWise – BUP Smart Campus Energy Optimization API
 
-> **BUP CSE Fest 2026 Hackathon Submission**
-> Intelligent 24-hour energy scheduling with natural-language operator directives, mathematical optimization, and robust guardrails.
+## 1. Project Overview
 
----
+GridWise is a REST API for intelligent 24-hour campus energy scheduling. It accepts hourly demand, solar generation, electricity tariffs, battery specifications, and one to three natural-language operator notes.
 
-## Overview
+The service interprets operator notes into supported energy directives, solves a cost-minimization Mixed-Integer Linear Program (MILP), and independently validates the resulting schedule before returning it.
 
-GridWise is a RESTful API that accepts a campus energy scenario (hourly demand, solar generation, tariffs, and battery specifications) along with 1–3 natural-language operator notes. It interprets the notes into structured directives, solves a Mixed-Integer Linear Program (MILP) to minimize grid electricity cost, and returns a validated 24-hour energy schedule.
+The project was developed for the BUP CSE Fest 2026 GridWise Challenge by team Kronos.
 
-### Key Features
+Source repository: https://github.com/SabikunEthika/GridWise-BUP-2026
 
-- **LLM-Powered NLP Interpretation** – Uses Google Gemini API to parse free-text operator notes into structured directives with temperature-0 determinism.
-- **Safe Failure Fallback** – Deterministic rule-based interpreter auto-activates when Gemini is unavailable, ensuring the service never crashes.
-- **6 Supported Directive Types** – `solar_reduction`, `minimum_battery_reserve`, `no_charge_window`, `no_discharge_window`, `max_grid_window`, `no_op`.
-- **MILP Optimization** – PuLP/CBC solver with binary variables preventing simultaneous charge/discharge, end-of-day battery neutrality, and directive-aware constraints.
-- **Post-Solve Validation** – Independent validator verifies energy balance, battery physics, directive compliance, and numerical consistency.
-- **Strict HTTP Contract** – `200` success, `400` malformed requests, `422` semantic errors, `500` controlled internal errors.
+## 2. Architecture / Solution Flow
 
----
+~~~text
+Client request
+     |
+     v
+FastAPI request-schema validation
+     |
+     v
+LLM interpreter or deterministic fallback
+     |
+     v
+Directive guardrails and sanitization
+     |
+     v
+PuLP/CBC MILP optimizer
+     |
+     v
+Independent schedule validator
+     |
+     v
+Validated 24-hour response
+~~~
 
-## Architecture
+The optimizer enforces demand balance, solar availability, battery capacity, charge/discharge limits, directive constraints, and end-of-day battery neutrality.
 
-```
-POST /optimize-energy
-        │
-        ▼
-┌─────────────────────┐
-│  LLM Interpreter    │  ← Gemini API or deterministic fallback
-│  (llm_interpreter)  │
-└────────┬────────────┘
-         │ ParsedDirective[]
-         ▼
-┌─────────────────────┐
-│  Guardrails Module  │  ← Validates, sanitizes, auto-repairs
-│  (guardrails)       │
-└────────┬────────────┘
-         │ DirectiveInterpretation[]
-         ▼
-┌─────────────────────┐
-│  PuLP Optimizer     │  ← MILP cost minimization
-│  (optimizer)        │
-└────────┬────────────┘
-         │ HourlyPlanEntry[]
-         ▼
-┌─────────────────────┐
-│  Post-Solve         │  ← Independent validation
-│  Validator          │
-└────────┬────────────┘
-         │
-         ▼
-   200 OK: OptimizeEnergyResponse
-```
-
----
-
-## Project Structure
-
-```
-GridWise-BUP-2026/
-├── app/
-│   ├── __init__.py
-│   ├── main.py                    # FastAPI entry point & exception handlers
-│   ├── llm_interpreter.py         # Gemini NLP + deterministic fallback
-│   ├── optimizer.py               # PuLP MILP solver
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── request_models.py      # Pydantic request schemas
-│   │   ├── response_models.py     # Pydantic response schemas
-│   │   └── directive_models.py    # Intermediate directive models
-│   └── modules/
-│       ├── __init__.py
-│       ├── guardrails.py          # Directive validation & auto-repair
-│       └── validator.py           # Post-solve plan validation
-├── tests/
-│   ├── test_interpreter.py        # NLP & guardrail unit tests
-│   └── test_e2e_scenarios.py      # End-to-end API tests
-├── .env.example                   # Environment variable template
-├── .gitignore
-├── Dockerfile                     # Production container
-├── docker-compose.yml             # Docker Compose configuration
-├── requirements.txt               # Python dependencies
-└── README.md
-```
-
----
-
-## Quick Start
-
-### Prerequisites
+## 3. Technology Stack
 
 - Python 3.11+
-- (Optional) Docker & Docker Compose
+- FastAPI and Uvicorn
+- Pydantic v2
+- Google Gemini through google-genai
+- PuLP with the COIN-OR CBC solver
+- Pytest and HTTPX
+- Docker and Docker Compose
 
-### Local Development
+## 4. Setup & Installation
 
-```bash
-# 1. Clone the repository
+Clone the repository and enter the project directory:
+
+~~~bash
 git clone https://github.com/SabikunEthika/GridWise-BUP-2026.git
 cd GridWise-BUP-2026
+~~~
 
-# 2. Create and activate virtual environment
+Create and activate a virtual environment.
+
+Windows PowerShell:
+
+~~~powershell
 python -m venv .venv
-source .venv/bin/activate   # Linux/Mac
-.venv\Scripts\activate      # Windows
+.venv\Scripts\Activate.ps1
+~~~
 
-# 3. Install dependencies
+Git Bash:
+
+~~~bash
+python -m venv .venv
+source .venv/Scripts/activate
+~~~
+
+Install dependencies:
+
+~~~bash
 pip install -r requirements.txt
+~~~
 
-# 4. Configure environment
+## 5. Environment Variables
+
+Copy the environment template:
+
+~~~bash
 cp .env.example .env
-# Edit .env and add your GEMINI_API_KEY (optional – fallback works without it)
-
-# 5. Run the server
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-### Docker Deployment & Fallback Instructions
-
-```bash
-# Option A: Run via Docker Compose (Recommended)
-docker compose up --build -d
-
-# Option B: Run via verified Docker Run command
-docker build -t gridwise-api:latest .
-docker run -d -p 8000:8000 --env-file .env.example --name gridwise-service gridwise-api:latest
-
-# Verify health endpoint
-curl -X GET http://localhost:8000/health
-# Returns: {"status": "ok"}
-```
-
----
-
-## Public Sample Verification & Expected Results
-
-The repository includes the official benchmark dataset in `data/public_sample_cases.json`.
-
-### 1. Automated Benchmark Test
-Run all 10 official public sample benchmark cases with one command:
-```bash
-pytest tests/test_official_samples.py -v
-```
-All 10 benchmark cases validate:
-- 100% accurate directive interpretation (directive_type, hours, factors, reserves, caps)
-- 100% accurate cost minimization matching the organizer optimal cost benchmark ($38,365.00 for SAMPLE-01, $42,885.00 for SAMPLE-02, etc.)
-
-### 2. Live cURL Test (SAMPLE-01)
-```bash
-curl -X POST http://localhost:8000/optimize-energy \
-  -H "Content-Type: application/json" \
-  -d '{
-    "scenario_id": "SAMPLE-01",
-    "operator_notes": [
-      "Facilities will wash the rooftop solar panels from noon until 2 PM. During cleaning, usable solar should be treated as roughly 25% of the forecast.",
-      "The sports office moved next month'\''s registration deadline."
-    ],
-    "hours": [
-      {"hour": 0, "demand_kwh": 90, "solar_kwh": 0, "tariff_bdt_per_kwh": 6},
-      {"hour": 1, "demand_kwh": 85, "solar_kwh": 0, "tariff_bdt_per_kwh": 6},
-      {"hour": 2, "demand_kwh": 80, "solar_kwh": 0, "tariff_bdt_per_kwh": 5},
-      {"hour": 3, "demand_kwh": 80, "solar_kwh": 0, "tariff_bdt_per_kwh": 5},
-      {"hour": 4, "demand_kwh": 85, "solar_kwh": 0, "tariff_bdt_per_kwh": 5},
-      {"hour": 5, "demand_kwh": 95, "solar_kwh": 0, "tariff_bdt_per_kwh": 6},
-      {"hour": 6, "demand_kwh": 110, "solar_kwh": 5, "tariff_bdt_per_kwh": 8},
-      {"hour": 7, "demand_kwh": 130, "solar_kwh": 20, "tariff_bdt_per_kwh": 10},
-      {"hour": 8, "demand_kwh": 150, "solar_kwh": 50, "tariff_bdt_per_kwh": 12},
-      {"hour": 9, "demand_kwh": 165, "solar_kwh": 90, "tariff_bdt_per_kwh": 14},
-      {"hour": 10, "demand_kwh": 175, "solar_kwh": 130, "tariff_bdt_per_kwh": 16},
-      {"hour": 11, "demand_kwh": 180, "solar_kwh": 160, "tariff_bdt_per_kwh": 16},
-      {"hour": 12, "demand_kwh": 185, "solar_kwh": 180, "tariff_bdt_per_kwh": 15},
-      {"hour": 13, "demand_kwh": 180, "solar_kwh": 170, "tariff_bdt_per_kwh": 14},
-      {"hour": 14, "demand_kwh": 170, "solar_kwh": 140, "tariff_bdt_per_kwh": 13},
-      {"hour": 15, "demand_kwh": 165, "solar_kwh": 90, "tariff_bdt_per_kwh": 14},
-      {"hour": 16, "demand_kwh": 170, "solar_kwh": 45, "tariff_bdt_per_kwh": 18},
-      {"hour": 17, "demand_kwh": 185, "solar_kwh": 10, "tariff_bdt_per_kwh": 22},
-      {"hour": 18, "demand_kwh": 205, "solar_kwh": 0, "tariff_bdt_per_kwh": 28},
-      {"hour": 19, "demand_kwh": 215, "solar_kwh": 0, "tariff_bdt_per_kwh": 30},
-      {"hour": 20, "demand_kwh": 205, "solar_kwh": 0, "tariff_bdt_per_kwh": 26},
-      {"hour": 21, "demand_kwh": 175, "solar_kwh": 0, "tariff_bdt_per_kwh": 18},
-      {"hour": 22, "demand_kwh": 135, "solar_kwh": 0, "tariff_bdt_per_kwh": 10},
-      {"hour": 23, "demand_kwh": 105, "solar_kwh": 0, "tariff_bdt_per_kwh": 7}
-    ],
-    "battery": {
-      "capacity_kwh": 220,
-      "initial_energy_kwh": 110,
-      "minimum_energy_kwh": 40,
-      "max_charge_kwh_per_hour": 50,
-      "max_discharge_kwh_per_hour": 50
-    }
-  }'
-```
-
-**Expected Result**:
-- `total_grid_kwh`: `2692.5`
-- `total_cost_bdt`: `38365.0`
-- `peak_grid_kwh`: `175.0`
-- `directive_interpretation[0]`: `solar_reduction` with `hours: [12, 13]` and `factor: 0.25`
-- `directive_interpretation[1]`: `no_op` with `applies: false` and `structured_adjustment: null`
-
----
-
-## API Endpoints
-
-### `GET /health`
-
-Health check endpoint.
-
-**Response**: `200 OK`
-```json
-{"status": "ok"}
-```
-
-### `POST /optimize-energy`
-
-Main LLM-assisted energy optimization endpoint.
-
-### Error Responses
-
-| Status | Meaning |
-|--------|---------|
-| `400` | Malformed JSON or structurally invalid request |
-| `422` | Semantically invalid (guardrail violation, infeasible optimization) |
-| `500` | Controlled internal error |
-
----
-
-## Running Tests
-
-```bash
-# Run the complete test suite (36 tests)
-pytest tests/ -v
-```
-
----
-
-## Environment Variables & Secrets Policy
+~~~
 
 | Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `GEMINI_API_KEY` | Google Gemini API key | `""` | Optional (safe fallback activates if empty) |
-| `LLM_MODEL` | Gemini generative model | `gemini-2.5-flash` | No |
-| `PORT` | HTTP port | `8000` | No |
+|---|---|---:|---|
+| LLM_PROVIDER | LLM provider | gemini | No |
+| GEMINI_API_KEY | Google Gemini API key | empty | Optional when fallback is available |
+| LLM_MODEL | Gemini model name | gemini-3.5-flash-lite | No |
+| PORT | HTTP server port | 8000 locally | No |
 
-### Secret Handling Guidance
-- **No secrets in repository**: `.env` is explicitly ignored by `.gitignore`. Only `.env.example` is tracked.
-- **No secrets in responses or logs**: The API never logs or echoes API keys, prompts containing secrets, or sensitive system credentials.
+Never commit .env or API keys to the repository.
 
----
+## 6. LLM Provider & Model
 
-## Supported Directives
+The configured LLM provider is Google Gemini. The deployed service uses gemini-3.5-flash-lite; the model name can be changed with LLM_MODEL. Gemini supports structured outputs for this model, which is required for directive interpretation.
 
-| Directive | Effect | Structured Data |
-|-----------|--------|-----------------|
-| `solar_reduction` | Reduces usable solar by a factor | `{"hours": [int, ...], "factor": float}` |
-| `minimum_battery_reserve` | Enforces minimum battery level | `{"hours": [int, ...], "minimum_energy_kwh": float}` |
-| `no_charge_window` | Prevents battery charging | `{"hours": [int, ...]}` |
-| `no_discharge_window` | Prevents battery discharging | `{"hours": [int, ...]}` |
-| `max_grid_window` | Caps grid import | `{"hours": [int, ...], "max_grid_kwh": float}` |
-| `no_op` | Irrelevant note (distractor) | `null` |
+If Gemini is unavailable and the checked-out version includes the fallback interpreter, the service uses deterministic rule-based interpretation instead.
 
----
+## 7. LLM Role in Directive Interpretation
 
-## Known Limitations & Design Assumptions
+The LLM interprets natural-language operator notes and maps each note to exactly one supported directive:
 
-1. **Horizon**: Exactly 24 hourly periods (hours 0 through 23).
-2. **Discrete Time**: Energy flows and battery states are scheduled in 1-hour time intervals.
-3. **Neutrality**: End-of-day battery energy must return to starting energy level (`battery_energy_after_kwh[23] == initial_energy_kwh`).
-4. **Feasibility**: Contradictory operator directives that make physics impossible (e.g. reserve exceeding battery capacity) are rejected by deterministic guardrails with HTTP 422.
+- solar_reduction
+- minimum_battery_reserve
+- no_charge_window
+- no_discharge_window
+- max_grid_window
+- no_op
 
----
+The LLM does not directly create the energy schedule. It only produces structured directive data. Guardrails validate that data before it reaches the optimizer.
 
-## Dependencies & Credits
+## 8. Guardrails & Validation
 
-- **FastAPI** & **Uvicorn** – High-performance asynchronous HTTP REST API
-- **PuLP** & **COIN-OR CBC Solver** – Industrial Mixed-Integer Linear Programming (MILP) solver
-- **Google GenAI SDK (`google-genai`)** – Gemini 2.5 Flash for natural language directive interpretation
-- **Pydantic v2** – Robust schema validation and contract serialization
-- **Pytest** & **HTTPX** – End-to-end automated test suites
+Guardrails validate directive types, hours, numeric values, supported fields, note ordering, and battery-related limits. The final-plan validator independently checks:
 
----
+- Exactly 24 ordered hours
+- Non-negative and finite energy values
+- Solar usage within effective solar availability
+- Battery capacity and minimum reserve requirements
+- Charge/discharge rate limits
+- No-charge and no-discharge windows
+- Maximum grid-import windows
+- Hourly energy balance
+- End-of-day battery neutrality
 
-## Team
+The API uses this error contract:
 
-**BUP CSE Fest 2026 – GridWise Challenge**
+| Status | Meaning |
+|---:|---|
+| 200 | Successful health or optimization response |
+| 400 | Malformed JSON or structurally invalid request |
+| 422 | Semantically invalid request or infeasible optimization |
+| 500 | Controlled internal validation or server error |
+
+## 9. Optimization Approach / Solver
+
+The optimizer uses PuLP to formulate a 24-hour MILP and CBC to solve it. The model minimizes total grid electricity cost while enforcing:
+
+- Grid, solar, charge, and discharge energy balance
+- Solar availability limits
+- Battery state transitions
+- Battery capacity and reserve limits
+- Binary charge/discharge mode selection
+- Operator directive constraints
+- Final battery energy equal to initial battery energy
+
+## 10. API Endpoints
+
+### GET /health
+
+Returns:
+
+~~~json
+{"status": "ok"}
+~~~
+
+### POST /optimize-energy
+
+Accepts an energy scenario and returns a validated schedule. Interactive documentation is available at /docs when the server is running.
+
+## 11. API Request & Response Examples
+
+The repository includes a complete valid request at data/sample_01_request.json.
+
+~~~bash
+curl -X POST http://127.0.0.1:8000/optimize-energy \
+  -H "Content-Type: application/json" \
+  --data-binary @data/sample_01_request.json
+~~~
+
+Successful response fields include:
+
+~~~json
+{
+  "scenario_id": "SAMPLE-01",
+  "directive_interpretation": [],
+  "hourly_plan": [],
+  "total_grid_kwh": 2692.5,
+  "total_cost_bdt": 38365.0,
+  "peak_grid_kwh": 175.0,
+  "plan_summary": "Generated a valid 24-hour energy schedule..."
+}
+~~~
+
+The actual hourly_plan contains 24 entries. Equivalent optimal schedules may differ in their hourly actions while remaining mathematically valid.
+
+## 12. How to Run Locally
+
+Start the development server:
+
+~~~bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+~~~
+
+Open these URLs:
+
+- Health check: http://127.0.0.1:8000/health
+- Interactive API documentation: http://127.0.0.1:8000/docs
+
+## 13. How to Test
+
+Run the complete test suite:
+
+~~~bash
+pytest tests/ -v
+~~~
+
+Run the official public sample tests:
+
+~~~bash
+pytest tests/test_official_samples.py -v
+~~~
+
+The public benchmark data is stored in data/public_sample_cases.json.
+
+## 14. Docker Setup & Usage
+
+Build and start the service with Docker Compose:
+
+~~~bash
+docker compose up --build
+~~~
+
+Or build and run the image directly:
+
+~~~bash
+docker build -t gridwise-api:latest .
+docker run --rm -p 8000:10000 --env-file .env gridwise-api:latest
+~~~
+
+Verify the container:
+
+~~~bash
+curl http://127.0.0.1:8000/health
+~~~
+
+## 15. Public Deployment
+
+The application can be deployed as a Docker web service on Render or another container-hosting platform.
+
+Required deployment settings:
+
+- Runtime: Docker
+- Bind host: 0.0.0.0
+- Health check path: /health
+- Environment variables: GEMINI_API_KEY, LLM_MODEL, and PORT
+
+After deployment, the public URLs will be:
+
+~~~text
+https://gridwise-bup-2026-i1n0.onrender.com/health
+https://gridwise-bup-2026-i1n0.onrender.com/docs
+~~~
+
+Submission deployment URL:
+
+~~~text
+https://gridwise-bup-2026-i1n0.onrender.com/docs
+~~~
+
+## 16. Sample Test Cases / Results
+
+The official sample pack contains ten public cases, SAMPLE-01 through SAMPLE-10, in data/public_sample_cases.json.
+
+For SAMPLE-01, the expected directive interpretation includes:
+
+~~~json
+{
+  "directive_type": "solar_reduction",
+  "hours": [12, 13],
+  "factor": 0.25
+}
+~~~
+
+The unrelated second note should be classified as no_op. Reference metrics are:
+
+~~~text
+total_grid_kwh: 2692.5
+total_cost_bdt: 38365.0
+peak_grid_kwh: 175.0
+~~~
+
+The returned plan is valid when it satisfies all physical, directive, and accounting constraints. It does not need to match the reference action sequence byte-for-byte.
+
+## 17. Dependencies
+
+Runtime and testing dependencies are listed in requirements.txt:
+
+- fastapi
+- uvicorn
+- pydantic
+- python-dotenv
+- google-genai
+- pulp
+- pytest
+- httpx
+
+The Docker image also installs the COIN-OR CBC system solver.
+
+## 18. Limitations
+
+- The planning horizon is exactly 24 one-hour periods.
+- Hours must be supplied in ascending order from 0 to 23.
+- Grid export is not modeled; unused solar is curtailed.
+- Battery energy must return to its initial value at hour 23.
+- Contradictory or physically infeasible directives are rejected.
+- Gemini interpretation quality depends on the configured model and API availability; the deterministic fallback is used when supported by the current implementation.
+
+## 19. Team / Contributors
+
+### Team Kronos
+
+1. MD. Mushfiqur Rahman
+2. Sabikun Alam
+3. Abdullah Al Noman
+4. Mahedi Hasan Oni
+
+BUP CSE Fest 2026 – GridWise Challenge
