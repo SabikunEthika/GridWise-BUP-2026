@@ -32,6 +32,12 @@ class BatteryInput(BaseModel):
 class OptimizeEnergyRequest(BaseModel):
     scenario_id: str = Field(min_length=1)
     operator_notes: list[str] = Field(min_length=1, max_length=3)
+    @model_validator(mode="after")
+    def validate_operator_notes(self):
+        for i, note in enumerate(self.operator_notes):
+            if not note or not note.strip():
+                raise ValueError(f"operator_notes[{i}] cannot be empty or whitespace-only")
+        return self
     hours: list[HourInput] = Field(min_length=24, max_length=24)
     battery: BatteryInput
 
