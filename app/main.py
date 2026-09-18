@@ -1,4 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.llm_interpreter import interpret_operator_notes
 from app.modules.guardrails import apply_guardrails, GuardrailError
@@ -14,6 +16,24 @@ app = FastAPI(
 )
 
 
+from fastapi.encoders import jsonable_encoder
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(
+    request: Request,
+    exc: RequestValidationError,
+):
+    """Map Pydantic/request-shape failures to the API's documented 400."""
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "detail": "Malformed JSON or structurally invalid request",
+            "errors": jsonable_encoder(exc.errors()),
+        },
+    )
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -26,9 +46,15 @@ def health():
 def optimize_energy_endpoint(request: OptimizeEnergyRequest):
 
     try:
-        parsed_directives = interpret_operator_notes(
-            request.operator_notes
-        )
+        try:
+            parsed_directives = interpret_operator_notes(
+                request.operator_notes,
+                battery_capacity_kwh=request.battery.capacity_kwh
+            )
+        except TypeError:
+            parsed_directives = interpret_operator_notes(
+                request.operator_notes
+            )
 
         interpretations = apply_guardrails(
             parsed_directives,
@@ -72,14 +98,14 @@ def optimize_energy_endpoint(request: OptimizeEnergyRequest):
             detail=f"Optimization failed: {str(e)}"
         )
 
-    except ValidationError as e:
+    except ValidationError:
         raise HTTPException(
             status_code=500,
-            detail=f"Final validation failed: {str(e)}"
+            detail="Controlled internal validation error."
         )
 
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=f"Energy optimization failed: {str(e)}"
+            detail="Controlled internal error."
         )

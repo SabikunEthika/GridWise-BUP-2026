@@ -123,9 +123,10 @@ def validate_final_plan(
                 f"Solar usage exceeds available solar at hour {h}"
             )
 
-        if energy_after < battery.minimum_energy_kwh - 0.01:
+        if energy_after < reserve_requirements[h] - 0.01:
             raise ValidationError(
-                f"Battery below minimum at hour {h}"
+                f"Battery energy ({energy_after:.2f}) below required reserve "
+                f"({reserve_requirements[h]:.2f}) at hour {h}"
             )
 
         if energy_after > battery.capacity_kwh + 0.01:
@@ -146,7 +147,7 @@ def validate_final_plan(
 
             expected_energy = previous_energy + battery_kwh
 
-            if battery_kwh <= 0.01:
+            if battery_kwh <= 0:
                 raise ValidationError(
                     f"Charge action has zero battery movement at hour {h}"
                 )
@@ -164,7 +165,7 @@ def validate_final_plan(
 
             expected_energy = previous_energy - battery_kwh
 
-            if battery_kwh <= 0.01:
+            if battery_kwh <= 0:
                 raise ValidationError(
                     f"Discharge action has zero battery movement at hour {h}"
                 )
