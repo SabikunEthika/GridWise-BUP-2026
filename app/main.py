@@ -46,9 +46,15 @@ def health():
 def optimize_energy_endpoint(request: OptimizeEnergyRequest):
 
     try:
-        parsed_directives = interpret_operator_notes(
-            request.operator_notes
-        )
+        try:
+            parsed_directives = interpret_operator_notes(
+                request.operator_notes,
+                battery_capacity_kwh=request.battery.capacity_kwh
+            )
+        except TypeError:
+            parsed_directives = interpret_operator_notes(
+                request.operator_notes
+            )
 
         interpretations = apply_guardrails(
             parsed_directives,
