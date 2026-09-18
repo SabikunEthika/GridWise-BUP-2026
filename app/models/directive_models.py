@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Literal, Optional
+from typing import Optional, Any
 
 
 class DirectiveData(BaseModel):
@@ -34,5 +34,5 @@ class ParsedDirective(BaseModel):
     """What the LLM interpreter returns (before guardrails validation)"""
     note_index: int
     directive_type: str
-    structured_data: Optional[dict] = None
+    structured_data: Optional[dict[str, Any]] = None
     explanation: str
