@@ -169,9 +169,7 @@ def optimize_energy(
         for h in range(24)
     )
 
-    solver = pulp.PULP_CBC_CMD(
-        msg=False
-    )
+    solver = pulp.PULP_CBC_CMD(msg=False, timeLimit=10)
 
     status = problem.solve(solver)
 
@@ -193,12 +191,14 @@ def optimize_energy(
         discharge_value = float(pulp.value(discharge[h]) or 0.0)
         energy_value = float(pulp.value(battery_energy[h]) or 0.0)
 
-        if charge_value > 1e-7:
+        # CBC can return tiny residual values around zero. Treat them as idle
+        # so the serialized action and battery transition remain consistent.
+        if charge_value > 1e-4:
             action = "charge"
-            battery_value = charge_value
-        elif discharge_value > 1e-7:
+            battery_value = round(charge_value, 4)
+        elif discharge_value > 1e-4:
             action = "discharge"
-            battery_value = discharge_value
+            battery_value = round(discharge_value, 4)
         else:
             action = "idle"
             battery_value = 0.0
@@ -206,11 +206,11 @@ def optimize_energy(
         plan.append(
             HourlyPlanEntry(
                 hour=h,
-                grid_kwh=grid_value,
-                solar_used_kwh=solar_value,
+                grid_kwh=round(grid_value, 4),
+                solar_used_kwh=round(solar_value, 4),
                 battery_action=action,
                 battery_kwh=battery_value,
-                battery_energy_after_kwh=energy_value
+                battery_energy_after_kwh=round(energy_value, 4)
             )
         )
 

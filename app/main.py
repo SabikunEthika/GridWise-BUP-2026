@@ -1,4 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.llm_interpreter import interpret_operator_notes
 from app.modules.guardrails import apply_guardrails, GuardrailError
@@ -12,6 +14,21 @@ app = FastAPI(
     title="GridWise Energy Optimization API",
     version="1.0.0"
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(
+    request: Request,
+    exc: RequestValidationError,
+):
+    """Map Pydantic/request-shape failures to the API's documented 400."""
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "detail": "Malformed JSON or structurally invalid request",
+            "errors": exc.errors(),
+        },
+    )
 
 
 @app.get("/health")
@@ -72,14 +89,14 @@ def optimize_energy_endpoint(request: OptimizeEnergyRequest):
             detail=f"Optimization failed: {str(e)}"
         )
 
-    except ValidationError as e:
+    except ValidationError:
         raise HTTPException(
             status_code=500,
-            detail=f"Final validation failed: {str(e)}"
+            detail="Controlled internal validation error."
         )
 
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=f"Energy optimization failed: {str(e)}"
+            detail="Controlled internal error."
         )
